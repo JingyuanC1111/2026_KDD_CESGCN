@@ -130,50 +130,6 @@ if __name__ == '__main__':
         # Plotting
         plt.figure(figsize=(10, 5))
         plt.plot(dates[0:18], true_value[-27:-9], label='True Value', color='green', marker='o', markersize=8)
-        # plt.plot(means_ca_wo, label='Mean Prediction', color='blue')
-        # 0 ,4, 8, 12
-
-        '''
-        means_ca_mte = np.array([169, 367, 573, 760, 921, 1403, 1996, 1791,1633, 1617, 1348,1229, 941, 865, 516, 446, 448, 458,
-                                 ])
-        stds_ca_mte = np.array([116, 166, 216, 315, 387, 465, 655, 643, 589, 555, 456, 478, 444, 434, 398, 299,272, 191])
-
-        means_ca_wo = np.array([115, 298, 351, 357, 389, 593, 789, 942, 1047, 1084, 901, 715, 610, 574, 532, 461 , 455, 505])
-        stds_ca_wo = np.array([61, 76, 113, 136, 169, 141, 278, 443, 419, 495, 516, 413, 332, 300, 259, 289,211, 266])
-        '''
-
-        if state == 'GA':
-            ca_ci_upper_mte[0][3] = ca_ci_upper_mte[0][3] + 250
-            ca_ci_upper_mte[1][:] = ca_ci_upper_mte[1][:] + 300
-            ca_ci_lower_mte[2][:] = ca_ci_lower_mte[2][:] + 300
-            ca_ci_upper_mte[2][:] = ca_ci_upper_mte[2][:] + 700
-            ca_ci_lower_mte[3][:] = ca_ci_lower_mte[3][:] + 30
-            ca_ci_upper_mte[3][:] = ca_ci_upper_mte[3][:] + 100
-        elif state == 'TX':
-            ca_ci_lower_mte[0][:] = ca_ci_lower_mte[0][:] + 300
-            ca_ci_upper_mte[0][:] = ca_ci_upper_mte[0][:] + 600
-
-            ca_ci_lower_mte[1][:] = ca_ci_lower_mte[1][:] + 500
-            ca_ci_upper_mte[1][:] = ca_ci_upper_mte[1][:] + 1200
-
-            ca_ci_lower_mte[2][:] = ca_ci_lower_mte[2][:] + 2500
-            ca_ci_upper_mte[2][1:] = ca_ci_upper_mte[2][1:] + 3200
-            ca_ci_upper_mte[2][0] = ca_ci_upper_mte[2][0] + 2200
-
-        elif state == 'CA':
-
-            ca_ci_lower_mte[0][:] = ca_ci_lower_mte[0][:] + 300
-            ca_ci_upper_mte[0][:] = ca_ci_upper_mte[0][:] + 600
-
-            ca_ci_lower_mte[1][:] = ca_ci_lower_mte[1][:] + 700
-            ca_ci_upper_mte[1][:-3] = ca_ci_upper_mte[1][:-3] + 800
-            ca_ci_upper_mte[1][-3] = ca_ci_upper_mte[1][-3] + 700
-            ca_ci_upper_mte[1][-2] = ca_ci_upper_mte[1][-2] + 1200
-            ca_ci_upper_mte[1][-1] = ca_ci_upper_mte[1][-1] + 2000
-
-            ca_ci_lower_mte[2][:] = ca_ci_lower_mte[2][:] + 2500
-            ca_ci_upper_mte[2][1:] = ca_ci_upper_mte[2][1:] + 3200
-            ca_ci_upper_mte[2][0] = ca_ci_upper_mte[2][0] + 2200
 
         no_mte_label_added = False
         flusight_ensemble_label_added = False
@@ -186,19 +142,7 @@ if __name__ == '__main__':
             start_idx = i  # Start index for each set of predictions
             end_idx = start_idx + 4  # End index is always start plus 5 (four weeks later)
             forecast_dates = dates[start_idx:end_idx]  # Selecting the corresponding date range
-            '''
 
-            # Mean and standard deviation for the forecast window
-            ran1 = random.uniform(0.3, 0.5)
-            ran2 = random.uniform(0.4, 0.6)
-            ran3 = random.uniform(0.4, 0.7)
-            ran4 = random.uniform(0.5, 0.8)
-
-            real = true_value[i:i + 4]
-            mean_ls = np.array([real[0] * 0.6, real[1] * 0.7, real[2] * 1.2, real[3] * 1.3])
-            std_ls = np.array(
-                [real[0] * 0.6 * ran1, real[1] * 0.75 * ran2, real[2] * 1.07 * ran3, real[3] * 1.25 * ran4])
-            '''
             if not flusight_ensemble_label_added:
                 plt.fill_between(forecast_dates, ca_ci_lower_ensemble[index], ca_ci_upper_ensemble[index],
                                  color='green', alpha=0.5, label='FluSight Ensemble')
@@ -224,22 +168,7 @@ if __name__ == '__main__':
                                  color='blue', alpha=0.5)
 
             index = index + 1
-
-            '''
-            if not no_mte_label_added:
-                plt.fill_between(forecast_dates, means_ca_mte[i] - stds_ca_mte[i],
-                             means_ca_mte[i] + stds_ca_mte[i],
-                             color='blue', alpha=0.3, label='MTE')
-                no_mte_label_added = True
-            else:
-                plt.fill_between(forecast_dates, means_ca_mte[i] - stds_ca_mte[i],
-                                 means_ca_mte[i] + stds_ca_mte[i],
-                                 color='blue', alpha=0.3)
-
-            # Plotting the forecast with shaded uncertainty
-            plt.plot(forecast_dates, forecast_means, marker='o', label=f'Forecast {i+1}' if i in [0, 4, 10, 14] else '')
-            plt.fill_between(forecast_dates, forecast_means - forecast_stds, forecast_means + forecast_stds, alpha=0.3)
-            '''
+            
         plt.xlabel('Date')
         plt.ylabel('Number of Hospitalizations')
         plt.title('{} Flu Hospitalization Curve'.format(state))
