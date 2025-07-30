@@ -2,6 +2,7 @@ import argparse
 import os
 from operator import index
 from os.path import split
+from datetime import date
 
 import numpy as np
 import json
@@ -19,31 +20,28 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--device', type=str, default='cpu', help='')
 parser.add_argument('--data', type=str, default='flu_hosp', choices=['covid_case', 'covid_hosp'
     , 'flu_hosp'], help='data path')
-parser.add_argument('--lr', type=float, default=0.001, help='learning rate')
+parser.add_argument('--lr', type=float, default=0.02, help='learning rate')
 parser.add_argument('--batch_size', type=int, default=16, help='batch size')
-parser.add_argument('--1', type=int, default=2)
-parser.add_argument('--seq_in_len', type=int, default=12, help='input sequence length')
+parser.add_argument('--seq_in_len', type=int, default=4, help='input sequence length')
 parser.add_argument('--horizon', type=int, default=5)
 parser.add_argument('--save', type=str, default='model/model.pt',
                     help='path to save the final model')
-parser.add_argument('--adj_path', type=str, default='baselines/ASTGCN/data/PEMS04/distance.csv')
+parser.add_argument('--version', type=str, default='V1')
 parser.add_argument('--num_nodes', type=int, default=52, help='number of nodes/variables')
 parser.add_argument('--num_MC_dropout', type=int, default=100,
                     help='paramater for case forecasting, how many times does '
                          'MC dropout predict')
-parser.add_argument('--node_dim', type=int, default=8, help='dim of nodes')
+parser.add_argument('--node_dim', type=int, default=12, help='dim of nodes')
 parser.add_argument('--optim', type=str, default='adam')
 parser.add_argument('--in_dim', type=int, default=1, help='inputs dimension')
-parser.add_argument('--layers', type=int, default=4, help='number of layers')
-parser.add_argument('--weight_decay', type=float, default=0.001, help='weight decay rate')
+parser.add_argument('--layers', type=int, default=2, help='number of layers')
+parser.add_argument('--weight_decay', type=float, default=0.02, help='weight decay rate')
 parser.add_argument('--clip', type=int, default=5, help='clip')
-parser.add_argument('--dilation_rates', type=list, default=[1, 2, 4, 4], help='dilation of each STJGC layer')
+parser.add_argument('--dilation_rates', type=list, default=[1,2], help='dilation of each STJGC layer')
 parser.add_argument('--L1Loss', type=bool, default=True)
 parser.add_argument('--epochs', type=int, default=100, help='')
 parser.add_argument('--seed', type=int, default=0, help='random seed')
-parser.add_argument('--expid', type=int, default=1, help='experiment id')
-parser.add_argument('--alpha', type=float, default=0.0, help='adj alpha')
-parser.add_argument('--dropout_rate', type=float, default=0.5, help='dropout rate')
+parser.add_argument('--dropout_rate', type=float, default=0.2, help='dropout rate')
 parser.add_argument('--multivariate_TE_enhanced', type=bool, default=True, help='Multivariate Transfer Entropy')
 parser.add_argument('--early_stopping', type=bool, default=True)
 parser.add_argument('--kernel_size', type=int, default=2)
@@ -54,21 +52,29 @@ parser.add_argument('--use_attention', type=bool, default=True, help='Whether we
 parser.add_argument('--use_dynamic_adj', type=bool, default=True, help='Whether we use dynamic spatio-temporal matrix')
 parser.add_argument('--use_multirange', type=bool, default=True, help='Whether we use multi-range to calculate')
 parser.add_argument('--use_MTE', type=bool, default=True, help='Whether we use MTE as starting point')
-parser.add_argument('--MC_DROPOUT_TIMES', type=int, default=50, help='how many predictions are performed')
-parser.add_argument('--patience', type=int, default=10, help='patience of training')
-
+parser.add_argument('--patience', type=int, default=20, help='patience of training')
+parser.add_argument('--unified_graph', type=bool, default=False, help='Decide whether takes MTE as initialization on '
+                                                                      'graph')
 args = parser.parse_args()
 torch.set_num_threads(3)
 
 
-def evaluate(X, Y, model, criterion, starting_ind, ending_ind):
+def evaluate(X, Y, model, criterion, starting_ind, ending_ind, scaler_min, scaler_max):
     model.eval()
     total_loss = 0
     X = X.transpose(2, 3)
     index_MTE_matrices = [starting_ind, ending_ind]
+    '''
     with torch.no_grad():
         output = model(X, index_MTE_matrices).squeeze(-1)
     original_Y = Y.transpose(1, 2).squeeze(-1)
+    '''
+    with torch.no_grad():
+        output = model(X, index_MTE_matrices, 0, False).squeeze(-1)
+    original_Y = Y.transpose(1, 2).squeeze(-1)
+    output = torch.tensor(inverse_transform(output,scaler_min, scaler_max))
+    original_Y =torch.tensor(inverse_transform(original_Y,scaler_min, scaler_max))
+
 
     if criterion is None:
         loss = mape_loss(output, original_Y)
@@ -78,7 +84,7 @@ def evaluate(X, Y, model, criterion, starting_ind, ending_ind):
     return total_loss
 
 
-def train(data, X, Y, model, optim, batch_size, criterion, device):
+def train(data, X, Y, model, optim, batch_size, criterion, device, scaler_min, scaler_max):
     model.train()
     torch.autograd.set_detect_anomaly(True)
     total_loss = 0
@@ -92,8 +98,13 @@ def train(data, X, Y, model, optim, batch_size, criterion, device):
             index_MTE_matrices = [(idx_count - 1) * batch_size, len(X)]
         else:
             index_MTE_matrices = [(idx_count - 1) * batch_size, idx_count * batch_size]
-        output = model(X_batch, index_MTE_matrices).squeeze(-1)
-        original_Y = Y_batch.transpose(1, 2).squeeze(-1)
+
+        #output = model(X_batch, index_MTE_matrices).squeeze(-1)
+        #original_Y = Y_batch.transpose(1, 2).squeeze(-1)
+
+        output = model(X_batch, index_MTE_matrices, idx_count, True).squeeze(-1)
+        output = inverse_transform(output, scaler_min, scaler_max)# Assuming `scaler` supports PyTorch tensors directly
+        original_Y = inverse_transform(Y_batch.transpose(1, 2).squeeze(-1), scaler_min, scaler_max)
 
         if criterion is None:
             loss = mape_loss(output, original_Y)
@@ -151,116 +162,134 @@ def all_metrics(true, pred):
 
     return np.mean(MAE), np.mean(rmse_list), np.mean(mape_list)
 
-
-def predict(best_model, testX, staring_index, scaler):
+def inverse_transform(tensor, scaler_min, scaler_max):
+    scaler_min = scaler_min.view(1, 52, 1)
+    scaler_max = scaler_max.view(1, 52, 1)
+    return tensor * (scaler_max - scaler_min) + scaler_min
+def predict(best_model, testX, adj, scaler_min, scaler_max):
     best_model.train()
     loss = dict()
     loss['mae'] = list()
     loss['mape'] = list()
     X = testX
     X = X.transpose(2, 3)
-    data_index = [staring_index, staring_index + 1]
+    data_index = [len(adj) - 1, len(adj)]
+    res = list()
     with torch.no_grad():
-        output = best_model(X, data_index).squeeze().numpy()
-        output = np.transpose(output)
-    output = scaler.inverse_transform(output)
-    return output
+        output = best_model(X, data_index, 0, False).squeeze(-1)
+        # output = np.transpose(output).reshape(1, -1)
+        res = inverse_transform(output, scaler_min, scaler_max)
+    '''
+    while horizon:
+        with torch.no_grad():
+            output = best_model(X, data_index).squeeze().numpy()
+            output = np.transpose(output).reshape(1, -1)
+            next_output = torch.tensor(output).unsqueeze(0).unsqueeze(0)
+        output = torch.tensor(scaler.inverse_transform(output))
+        res.append(output.squeeze())
+        new_input = torch.concatenate((X[:,1:,:,:],next_output),dim=1)
+        horizon = horizon - 1
+        X = new_input
+    '''
+    # res = torch.stack(res, dim=1)
+
+    return res
 
 
-def reframe(raw_data, data, train_window, forecasting_window, split_ratio):
-    complete_sample_length = train_window + forecasting_window
+def reframe(raw_data, data, train_window, forecasting_window):
     processed_data = list()
     raw_data_list = list()
-    testing_set = list()
-    for i in range(complete_sample_length, data.shape[0] + 1):
-        starting = i - complete_sample_length
-        ending = i
+    for i in range(12, data.shape[0] + 1):
+        starting = i - train_window - 1
+        ending = starting + train_window + forecasting_window
+        if ending > len(data):
+            break
         processed_data.append(data[starting:ending, :])
         raw_data_list.append(raw_data.iloc[starting:ending, :])
-    testing_set.append(data[-train_window:])
-    length = int(len(processed_data) * split_ratio)
-    trainset = processed_data[0:length]
-    val_set = processed_data[length:]
-    raw_train = raw_data_list[0:length]
-    available_raw_training_data = raw_data.iloc[0:(length + train_window), :]
+    trainset = processed_data
 
-    return trainset, val_set, raw_train, available_raw_training_data, testing_set
+    return trainset
 
 
-def main(file, ref_date, fct_date, train_window, forecasting_window):
-    #df = pd.read_csv(file)
-    df = pd.read_csv('target-hospital-admissions_1127.csv')
+def main(ref_date, fct_date, train_window, forecasting_window):
+    df = pd.read_csv('CDC_DATA/target-hospital-admissions_0503.csv')
     removable = ['US']
     df['date'] = pd.to_datetime(df['date']).dt.date
     df = df[~df['location'].isin(removable)]
-    df['location'] = df['location'].astype(int)
+    df['location'] = df['location'].astype(int).astype(str).str.zfill(2)
     available_data = df.pivot(index='location', columns='date', values='value')
+
     # available_data = available_data[:,:-4]
     available_data = available_data.T
-    available_data.fillna(0)
-    available_data = available_data.iloc[0:116,:]
+    available_data.fillna(0, inplace=True)
+    available_data = available_data.iloc[1:,:]
+    # available_data.to_csv('CDC_DATA/transferred_hospital_admission_0503.csv')
     scaler = MinMaxScaler()
     scaler.fit(available_data.values)
+
+    scaler_min = torch.tensor(scaler.data_min_, dtype=torch.float32, device=args.device)
+    scaler_max = torch.tensor(scaler.data_max_, dtype=torch.float32, device=args.device)
+
+    # Reimplement the inverse transform function
+
+
     processed_data = scaler.transform(available_data.values)
 
     # available_data.to_csv('time_series_US.csv')
     regions = available_data.columns.values
     # load MTE_matrices here
-    val_split = 0.8
-    training_set, validation_set, _, raw_train, testing = reframe(available_data, processed_data, train_window,
-                                                                  forecasting_window, val_split)
+    training_set = reframe(available_data, processed_data, train_window,
+                                                                  forecasting_window)
     # raw_train.to_csv('raw_data_for_MTE.csv')
     # get corresponding data for valid MTE, to guarantee valid MTE using idtxl, we need to set the starting
     # timestamp at least twice as the lags.
-
-    staring_time = train_window * 2  # Note that we need to run MTE from this starting time till raw_train ends
-    training_set = training_set[train_window:]
-
+    '''
     file_path = "time_range_file.txt"
     # Writing the numbers to the file
     with open(file_path, "w") as file:
         for number in range(staring_time, len(raw_train)):
             file.write(f"{number}\n")
-
+    '''
     # adj, distance_mx = get_adjacency_matrix(args.data) # load FLU_hosp MTE matrices
 
     # We make a toy sample first
     sample_size = len(training_set)
     num_regions = available_data.shape[1]
     adj = load_from_mte_adj()
-
-    # adj = np.random.rand(sample_size + len(validation_set) + forecasting_window, train_window, num_regions, num_regions)
+    temp = adj[-1]
 
     device = torch.device(args.device)
     adj = torch.from_numpy(adj)
     adj = adj.float()
     adj = adj.to(device)
-    metrics = ['mae']
+    metrics = ['MSE']
     res = dict()
     res['mape'] = list()
     res['mae'] = list()
     mc_num = 50
     # Perform normalization
     # Data = Consecutive_dataloader(available_data, 0.8, 0.2, args.device, args.horizon, args.seq_in_len)
-    Data = dataloader_pipeline(processed_data, training_set, validation_set, testing, args.device, args.horizon,
+    Data = dataloader_pipeline(processed_data, training_set, args.device, args.horizon,
                                args.seq_in_len)
-    for iter in range(1):
+
+    for iter_index in range(0,10):
+        args.version = 'V'+str(iter_index+4)
         for metric in metrics:
             # Restore: X_train_original = X_train_normalized * (max_val - min_val) + min_val
             model = MTE_STJGC(args.batch_size, args.kernel_size, args.dilation_rates, args.dropout_rate, device,
                               args.data, args.num_nodes, args.horizon, args.use_MTE, args.use_multirange
                               , args.use_dynamic_adj, args.use_attention, args.use_temporal, args.use_gnn,
-                              adj, node_dim=args.node_dim, seq_length=args.seq_in_len,
-                              in_dim=args.in_dim, layers=args.layers, alpha=args.alpha)
+                              adj, args.unified_graph, node_dim=args.node_dim, seq_length=args.seq_in_len,
+                              in_dim=args.in_dim, layers=args.layers)
             model = model.to(args.device)
 
             nParams = sum([p.nelement() for p in model.parameters()])
             print('Number of model parameters is', nParams, flush=True)
 
-            if metric == 'mae':
+            if metric == 'MAE':
                 criterion = nn.L1Loss().to(args.device)
             else:
-                criterion = None  # use mape function instead
+                criterion = nn.MSELoss()  # use mape function instead
             '''
             optim = Optim(
                 model.parameters(), args.optim, args.lr, args.clip, lr_decay=args.weight_decay
@@ -273,17 +302,19 @@ def main(file, ref_date, fct_date, train_window, forecasting_window):
             print('begin training')
             train_losses = list()
             valid_losses = list()
-
             min_val_loss = float('inf')
-            best_model_path = 'best_model.pth'
+            best_model_path = '0510/best_model_0426_CESGCN_LR_{}_{}_quantile_{}_dim_{}_onego_{}_epochs_{}_weight_decay_{}_{}.pth'. \
+                format(args.lr, ref_date, args.dropout_rate, args.node_dim, args.epochs,
+                       metric, args.weight_decay, args.version)
+
             count_patience = 0
             for epoch in range(1, args.epochs + 1):
                 train_loss = train(Data, Data.train[0], Data.train[1], model, optim,
-                                   args.batch_size, criterion, device)
-                ending_train_MTE_index = sample_size
-                ending_valid_MTE_index = len(processed_data) - forecasting_window - train_window * 2 + 1
-                val_loss = evaluate(Data.valid[0], Data.valid[1], model, criterion, ending_train_MTE_index,
-                                    ending_valid_MTE_index)
+                                   args.batch_size, criterion, device, scaler_min, scaler_max)
+                ending_train_MTE_index = Data.split
+                ending_valid_MTE_index = Data.length
+                val_loss = evaluate(Data.valid_x, Data.valid_y, model, criterion, ending_train_MTE_index,
+                                    ending_valid_MTE_index, scaler_min, scaler_max)
                 count_patience += 1
                 print(
                     '|metric is {} |LR: {:7f}| end of epoch {:3d} | train_loss {:5.4f} | val_loss {:5.4f}'.format(
@@ -294,7 +325,7 @@ def main(file, ref_date, fct_date, train_window, forecasting_window):
                     break
                 # Save the model if the validation loss is the best we've seen so far.
                 train_losses.append(train_loss)
-                valid_losses.append(val_loss)
+                #valid_losses.append(val_loss)
 
                 if val_loss < min_val_loss:
                     min_val_loss = val_loss
@@ -305,90 +336,98 @@ def main(file, ref_date, fct_date, train_window, forecasting_window):
             best_model = MTE_STJGC(args.batch_size, args.kernel_size, args.dilation_rates, args.dropout_rate, device,
                                    args.data, args.num_nodes, args.horizon, args.use_MTE, args.use_multirange
                                    , args.use_dynamic_adj, args.use_attention, args.use_temporal, args.use_gnn,
-                                   adj, node_dim=args.node_dim, seq_length=args.seq_in_len, in_dim=args.in_dim,
-                                   layers=args.layers, alpha=args.alpha)
+                                   adj, args.unified_graph, node_dim=args.node_dim, seq_length=args.seq_in_len, in_dim=args.in_dim,
+                                   layers=args.layers)
             best_model = best_model.to(args.device)
             best_model.load_state_dict(torch.load(best_model_path))
 
             res = list()
 
             for mc in range(0, mc_num):
-                point_forecasts = predict(best_model, Data.test[0], len(processed_data) - train_window * 2, scaler)
-                res.append(point_forecasts)
+                point_forecasts = predict(best_model, Data.test, adj,
+                                          scaler_min, scaler_max)
+                res.append(point_forecasts[0])
 
-    predict_all = list()
-    r = mc_num * horizon
-    for idx, region in enumerate(regions):
-        predict_vec = np.zeros([mc_num * horizon, 5])
-        predict_vec[:r, 0:1] = np.array([region] * r).reshape(-1, 1)
-        predict_vec[:r, 1:2] = np.array([0] * r).reshape(-1, 1)
-        for mc in range(mc_num):
-            pt_pd = res[mc][:, idx]
-            r3 = horizon
-            predict_vec[mc * r3:(mc + 1) * r3, 2:3] = np.array(range(horizon)).reshape(-1, 1)
-            predict_vec[mc * r3:(mc + 1) * r3, 3:4] = np.array([mc] * horizon).reshape(-1, 1)
-            predict_vec[mc * r3:(mc + 1) * r3, 4:5] = np.array(pt_pd).reshape(-1, 1)
-        predict_all.append(predict_vec)
-    result = np.vstack(predict_all)
-    pd_df = pd.DataFrame(result, columns=['location', 'date', 'ahead', 'mc', 'value'])
-    pd_df.to_csv('prediction-hosp.csv', mode='a', index=False)
-    file = 'prediction-hosp.csv'
-    pdf = pd.read_csv(file, dtype={'location': str})
-
-    pdf['reference_date'] = ref_date
-    pdf['fct_date'] = pdf.apply(lambda x: fct_date[int(x['ahead'])], axis=1)
-    fct = pdf.groupby(['location', 'fct_date', 'ahead', 'reference_date']).value.mean().reset_index()
-    fct['fct_std'] = pdf.groupby(['location', 'fct_date', 'ahead', 'reference_date']).value.std().values
-    fct.loc[:, 'horizon'] = (pd.to_datetime(fct['fct_date']) - pd.to_datetime(fct['reference_date'])).dt.days // 7
-    fct['reference_date'] = ref_date
-    fct['method'] = 'CESGCN'
-    fct = fct.drop('ahead', axis=1)
-    # fct.to_csv('prediction-{}-fmt.csv'.format(region),header=True,index=False)
-    fct.to_csv('prediction-fmt.csv', header=True, index=False, mode='w')
-
-    quantiles = [0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8,
-                 0.85, 0.9, 0.95, 0.975, 0.99]
-    quantile_res = list()
-    fct['location'] = pd.to_numeric(fct['location'], errors='coerce')
-    pd_df['location'] = pd.to_numeric(pd_df['location'], errors='coerce')
-    pd_df['ahead'] = pd.to_numeric(pd_df['ahead'], errors='coerce')
-
-    for idx, quantile in enumerate(quantiles):
-        quantile_df = np.zeros([horizon * num_regions, 12])
-        expanded_list = [x for x in regions for _ in range(horizon)]
-        quantile_df[:, 0:1] = np.array(expanded_list).reshape(-1, 1)
-        quantile_regions = list()
+        predict_all = list()
+        horizon = 5
+        r = mc_num * horizon
         for idx, region in enumerate(regions):
-            temp_value = fct[fct['location'].astype(int) == region]['value'].values
-            temp_std = fct[fct['location'].astype(int) == region]['fct_std'].values
-            quantile_df[idx * horizon:(idx + 1) * horizon, 3] = temp_value
-            quantile_df[idx * horizon:(idx + 1) * horizon, 4] = temp_std
-            quantile_df[idx * horizon:(idx + 1) * horizon, 5] = np.arange(-1, 4)
-            quantile_res_temp = list()
-            for ahead in range(0, horizon):
-                temp_value_quantiles = \
-                pd_df[pd_df['location'].astype(int) == region][pd_df['ahead'].astype(int) == ahead]['value'].values
-                quantile_number = np.quantile(temp_value_quantiles, quantile)
-                quantile_res_temp.append(quantile_number)
-            quantile_regions.extend(quantile_res_temp)
-        quantile_df[:, -2] = quantile
-        quantile_df[:, -1] = quantile_regions
-        quantile_df = pd.DataFrame(quantile_df,
-                                   columns=['location', 'target_end_date', 'avl_date', 'point', 'fct_std', 'horizon',
-                                            'reference_date',
-                                            'method', 'target', 'output_type', 'output_type_id', 'value'])
-        quantile_df['target_end_date'] = fct_date * num_regions
-        quantile_df['target_end_date'] = pd.to_datetime(quantile_df['target_end_date']).dt.date
-        quantile_df['avl_date'] = fct_date[0]
-        quantile_df['reference_date'] = fct_date[1]
-        quantile_df['target'] = ['wk inc flu hosp'] * num_regions * horizon
-        quantile_df['output_type'] = ['quantile'] * num_regions * horizon
-        quantile_res.append(quantile_df)
+            predict_vec = np.zeros([mc_num * horizon, 5])
+            predict_vec[:r, 0:1] = np.array([region] * r).reshape(-1, 1)
+            predict_vec[:r, 1:2] = np.array([0] * r).reshape(-1, 1)
+            for mc in range(mc_num):
+                pt_pd = res[mc][idx,:]
+                r3 = horizon
+                predict_vec[mc * r3:(mc + 1) * r3, 2:3] = np.array(range(horizon)).reshape(-1, 1)
+                predict_vec[mc * r3:(mc + 1) * r3, 3:4] = np.array([mc] * horizon).reshape(-1, 1)
+                predict_vec[mc * r3:(mc + 1) * r3, 4:5] = np.array(pt_pd).reshape(-1, 1)
+            predict_all.append(predict_vec)
+        result = np.vstack(predict_all)
+        pd_df = pd.DataFrame(result, columns=['location', 'date', 'ahead', 'mc', 'value'])
+        pd_df['location'] = pd_df['location'].astype(int).astype(str).str.zfill(2)
+        # pd_df.to_csv('prediction-hosp.csv', mode='a', index=False)
+        # file = 'prediction-hosp.csv'
+        pdf = pd_df
 
-    quantiled_version = pd.concat(quantile_res, axis=0)
-    quantiled_version.to_csv('CESGCN_{}_quantile.csv'.format(ref_date), header=True, index=False, mode='w')
+        pdf['reference_date'] = ref_date
+        pdf['ahead'] = pdf['ahead'].astype(int)
+        pdf['fct_date'] = pdf.apply(lambda x: fct_date[int(x['ahead'])], axis=1)
+        fct = pdf.groupby(['location', 'fct_date', 'ahead', 'reference_date']).value.mean().reset_index()
+        fct['fct_std'] = pdf.groupby(['location', 'fct_date', 'ahead', 'reference_date']).value.std().values
+        fct.loc[:, 'horizon'] = (pd.to_datetime(fct['fct_date']) - pd.to_datetime(fct['reference_date'])).dt.days // 7
+        fct['reference_date'] = ref_date
+        fct['method'] = 'CESGCN'
+        fct = fct.drop('ahead', axis=1)
+        # fct.to_csv('prediction-fmt.csv', header=True, index=False, mode='w')
 
-    fct.to_csv('CESGCN_{}.csv'.format(ref_date), header=True, index=False, mode='w')
+        quantiles = [0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8,
+                     0.85, 0.9, 0.95, 0.975, 0.99]
+        quantile_res = list()
+        fct['location'] = pd.to_numeric(fct['location'], errors='coerce')
+        fct['location'] = fct['location'].astype(int).astype(str).str.zfill(2)
+        pd_df['location'] = pd.to_numeric(pd_df['location'], errors='coerce')
+        pd_df['location'] = pd_df['location'].astype(int).astype(str).str.zfill(2)
+        pd_df['ahead'] = pd.to_numeric(pd_df['ahead'], errors='coerce')
+
+        for idx, quantile in enumerate(quantiles):
+            quantile_df = np.zeros([horizon * num_regions, 12])
+            expanded_list = [x for x in regions for _ in range(horizon)]
+            quantile_df[:, 0:1] = np.array(expanded_list).reshape(-1, 1)
+            quantile_regions = list()
+            for idx, region in enumerate(regions):
+                temp_value = fct[fct['location'] == region]['value'].values
+                temp_std = fct[fct['location'] == region]['fct_std'].values
+                quantile_df[idx * horizon:(idx + 1) * horizon, 3] = temp_value
+                quantile_df[idx * horizon:(idx + 1) * horizon, 4] = temp_std
+                quantile_df[idx * horizon:(idx + 1) * horizon, 5] = np.arange(-1, 4)
+                quantile_res_temp = list()
+                for ahead in range(0, horizon):
+                    temp_value_quantiles = \
+                        pd_df[pd_df['location'] == region][pd_df['ahead'] == ahead]['value'].values
+                    quantile_number = np.quantile(temp_value_quantiles, quantile)
+                    quantile_res_temp.append(quantile_number)
+                quantile_regions.extend(quantile_res_temp)
+            quantile_df[:, -2] = quantile
+            quantile_df[:, -1] = quantile_regions
+            quantile_df = pd.DataFrame(quantile_df,
+                                       columns=['location', 'target_end_date', 'avl_date', 'point', 'fct_std', 'horizon',
+                                                'reference_date',
+                                                'method', 'target', 'output_type', 'output_type_id', 'value'])
+            quantile_df['target_end_date'] = fct_date * num_regions
+            quantile_df['target_end_date'] = pd.to_datetime(quantile_df['target_end_date']).dt.date
+            quantile_df['avl_date'] = fct_date[0]
+            quantile_df['reference_date'] = fct_date[1]
+            quantile_df['target'] = ['wk inc flu hosp'] * num_regions * horizon
+            quantile_df['output_type'] = ['quantile'] * num_regions * horizon
+            quantile_res.append(quantile_df)
+
+        quantiled_version = pd.concat(quantile_res, axis=0)
+        quantiled_version['location'] = quantiled_version['location'].astype(int).astype(str).str.zfill(2)
+        quantiled_version.to_csv('0510/CESGCN_LR_{}_{}_quantile_{}_dim_{}_onego_{}_epochs_MSE_weight_decay_{}_TRAIN_{}.csv'.
+                                 format(args.lr,ref_date,args.dropout_rate,args.node_dim,
+                                        args.epochs,args.weight_decay,args.version), header=True, index=False, mode='w')
+
+        fct.to_csv('0510/CESGCN_LR_{}_{}_{}_dim_{}_onego_{}_MSE_weight_decay_{}_TRAIN_{}.csv'.format(args.lr,ref_date, args.dropout_rate,args.node_dim,args.epochs,args.weight_decay,args.version), header=True, index=False, mode='w')
 
 
 if __name__ == "__main__":
@@ -407,12 +446,11 @@ if __name__ == "__main__":
 
 
     # Confirmed cases
-    file = data['input_path']
     temp_out_dir = data['temp_output_path']
     out_dir = data['output_path']
     out_file = temp_out_dir + '/prediction-hosp.csv'
     if os.path.isfile(out_file):
         os.remove(out_file)
-    train_window = 12
-    horizon = 5
-    main(file, ref_date, fct_date, train_window, horizon)
+    train_window = args.seq_in_len
+    horizon = args.horizon
+    main(ref_date, fct_date, train_window, horizon)
