@@ -221,7 +221,7 @@ def get_adjacency_matrix(dataset_name):
 def load_from_mte_adj():
     degree_check = np.load('MTE_matrices_flu_hosp.npy')
     ls = list()
-    for t in range(11, 151):
+    for t in range(11, len(degree_check)):
         t = degree_check[t - 4:t, t, :, :]
         ls.append(t)
     return np.stack(ls, axis=0)
