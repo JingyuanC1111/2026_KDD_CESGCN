@@ -7,7 +7,7 @@ import os, sys
 print(sys.argv[1])
 time = int(sys.argv[1])
 if __name__ == '__main__':
-    cases = pd.read_csv('transferred_hospital_admission_0524.csv')
+    cases = pd.read_csv('transferred_hospital_admission_20251206.csv')
     cases = cases.iloc[:, 1:] 
     total_timestamps = cases.shape[0]
 
