@@ -302,7 +302,7 @@ def main(ref_date, fct_date, train_window, forecasting_window):
 
             print('begin training')
 
-            best_model_path = '0503/best_model_0426_CESGCN_LR_0.02_2025-04-26_quantile_0.2_dim_12_onego_100_epochs_MSE_weight_decay_0.02_V13.pth'
+            best_model_path = 'trained_best_models/best_model_0426_CESGCN_LR_0.02_2025-04-26_quantile_0.2_dim_12_onego_100_epochs_MSE_weight_decay_0.02_V13.pth'
 
             best_model = MTE_STJGC(args.batch_size, args.kernel_size, args.dilation_rates, args.dropout_rate, device,
                                    args.data, args.num_nodes, args.horizon, args.use_MTE, args.use_multirange
