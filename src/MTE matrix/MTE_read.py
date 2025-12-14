@@ -5,8 +5,8 @@ import torch
 
 if __name__ == '__main__':
     res_list = list()
-    MTE_static_matrices = torch.zeros((151, 151, 52, 52))
-    for time in range(12, 152):
+    MTE_static_matrices = torch.zeros((200, 200, 52, 52))
+    for time in range(12, 201):
         with open('MTE_FLU_4_LAG_12_TIME\MTE_flu_from_{}_to_{}'.format(str(time - 12), str(time)), 'rb') as file:
             results = pickle.load(file)
         for target in results.keys():
