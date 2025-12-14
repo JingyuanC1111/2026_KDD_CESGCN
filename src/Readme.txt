@@ -1,19 +1,17 @@
-Environment is Python 3.9.0
+## Environment
 
-requirements.txt contains all the packages to run the code
+The code is implemented in Python 3.9.0. All required packages to run the code are listed in `requirements.txt`.
 
-Unified_graph_variant.py is the ablation variant that we designed to validate the mechanism parallel design of graph constructions
+`Unified_graph_variant.py` is the ablation variant designed to validate the mechanism-parallel design of graph construction.
 
-write_cfg.py specifies the date we are forecasting 
+`write_cfg.py` specifies the target date for forecasting.
 
-layer.py and net.py are model design
+`layer.py` and `net.py` define the model architecture.
 
-trainer.py and util.py are functional modules in the model
+`trainer.py` and `util.py` provide the functional modules used during model training and execution.
 
-eval_func.py describes the evaluation metric design
+`eval_func.py` describes the design of the evaluation metrics.
 
-The following is the running strategy:
+---
 
-
-
- 
+## Running Strategy
