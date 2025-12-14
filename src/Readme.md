@@ -12,7 +12,7 @@ The code is implemented in Python 3.9.0. All required packages to run the code a
 
 `eval_func.py` describes the design of the evaluation metrics.
 
-`WIS_RE.py` evaluates the WIS score of CESGCN, compared with the FluSight_baseline and FluSight_ensemble models.
+`WIS_RE.py` evaluates the WIS score of CESGCN, compared with the FluSight_baseline and FluSight_ensemble models. Users can alter the 'starting_date' in the code and check the WIS performance up to 4 timestamps ahead, remember using the correct ground truth
 
 
 ---
