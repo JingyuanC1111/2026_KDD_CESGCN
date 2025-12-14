@@ -223,7 +223,7 @@ def main(ref_date, fct_date, train_window, forecasting_window):
     available_data = available_data.T
     available_data.fillna(0, inplace=True)
     available_data = available_data.iloc[1:,:]
-    # available_data.to_csv('CDC_DATA/transferred_hospital_admission_20251129.csv')
+    # available_data.to_csv('CDC_DATA/transferred_hospital_admission_20251206.csv')
     scaler = MinMaxScaler()
     scaler.fit(available_data.values)
 
