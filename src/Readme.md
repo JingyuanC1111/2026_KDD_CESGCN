@@ -18,3 +18,15 @@ The code is implemented in Python 3.9.0. All required packages to run the code a
 ---
 
 ## Running Strategy
+
+First, we download new data from https://github.com/cdcepi/FluSight-forecast-hub/blob/main/target-data/target-hospital-admissions.csv
+
+Then, we run data_processing.py to convert data to a proper format for further MTE analysis.
+
+Third step, we feed the output dataset to replace the dataset in src/MTE matrix, and run the corresponding sbatch file, remember replacing the using the latest time index.
+
+Fourth, for each latest forecasting week, update MTE result.
+
+Then, run MTE_read.py to get the latest constructed CESG, remember updating the dimension of the 4D tensor.
+
+Finally, run 2025_12_06_forecast.py to train the model, or can use 2025_12_06_forecast_predict.py to directly predict using the previous trained best model.
