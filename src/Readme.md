@@ -33,4 +33,4 @@ Finally, run `CESGCN_Train_From_Scratch.py` to train the model from scratch, a s
 
 The current best model has node_dim=16, lr=0.02, dropout=0.2, and metric is set to MSE (MAE is also available, but MSE shows better performance compared to MAE)
 
-Or we can use `CESGCN_Using_Prev_Best_Model.py` to directly predict using the previous trained best model.
+Or we can use `CESGCN_Using_Prev_Best_Model.py` to directly predict using the previous trained best model. Remember to reset the parameter as the same as the prev best model to run `CESGCN_Using_Prev_Best_Model.py`
