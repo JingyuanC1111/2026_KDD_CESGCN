@@ -347,6 +347,10 @@ def main(ref_date, fct_date, train_window, forecasting_window):
 
         quantiled_version = pd.concat(quantile_res, axis=0)
         quantiled_version['location'] = quantiled_version['location'].astype(int).astype(str).str.zfill(2)
+
+        repo_path = Path("{}".format(ref_date))
+        repo_path.mkdir(parents=True, exist_ok=True)
+        
         quantiled_version.to_csv(
             '{}/CESGCN_LR_{}_{}_quantile_{}_dim_{}_onego_{}_epochs_{}_weight_decay_{}_PREDICT_{}.csv'.
             format(ref_date, args.lr, ref_date, args.dropout_rate, args.node_dim,
