@@ -29,4 +29,8 @@ Fourth, for each latest forecasting week, update MTE result.
 
 Then, run `MTE_read.py` to get the latest constructed CESG, remember updating the dimension of the 4D tensor.
 
-Finally, run `CESGCN_Train_From_Scratch.py` to train the model, or can use `CESGCN_Using_Prev_Best_Model.py` to directly predict using the previous trained best model.
+Finally, run `CESGCN_Train_From_Scratch.py` to train the model from scratch, a set of tuning parameter is available (learning_rate, node_dim, dropout rate).
+
+The current best model has node_dim=16, lr=0.02, dropout=0.2, and metric is set to MSE (MAE is also available, but MSE shows better performance compared to MAE)
+
+Or we can use `CESGCN_Using_Prev_Best_Model.py` to directly predict using the previous trained best model.
