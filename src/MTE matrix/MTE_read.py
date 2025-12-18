@@ -2,11 +2,22 @@ import pickle
 import numpy as np
 import pandas as pd
 import torch
+from pathlib import Path
+
+
+folder = Path("MTE_FLU_4_LAG_12_TIME")
+
+num_files = sum(p.is_file() for p in folder.iterdir())
+print(num_files)
 
 if __name__ == '__main__':
+    folder = Path("MTE_FLU_4_LAG_12_TIME")
+
+    num_files = sum(p.is_file() for p in folder.iterdir())
+    
     res_list = list()
-    MTE_static_matrices = torch.zeros((200, 200, 52, 52))
-    for time in range(12, 201):
+    MTE_static_matrices = torch.zeros((num_files+11, num_files+11, 52, 52))
+    for time in range(12, num_files+12):
         with open('MTE_FLU_4_LAG_12_TIME\MTE_flu_from_{}_to_{}'.format(str(time - 12), str(time)), 'rb') as file:
             results = pickle.load(file)
         for target in results.keys():
