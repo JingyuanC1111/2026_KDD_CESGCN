@@ -10,4 +10,4 @@ module load miniforge
 conda activate MTE
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 
-python FLU_HOSP_MTE.py 200
+python FLU_HOSP_MTE.py 201
